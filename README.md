@@ -28,13 +28,16 @@ Several training-free mechanisms, all driven by the same grounding detector:
 | method | mechanism | CHAIR_s | CHAIR_i | recall | notes |
 |---|---|---|---|---|---|
 | baseline | — | 52.4 | 15.7 | 75.0 | |
-| best-of-N + grounding rerank | sample N captions, pick fewest hallucinations | **35.2** | **9.0** | 70.7 | biggest cut; recall −4.3 |
+| **best-of-N + grounding⊕self-verify rerank** | sample N captions, pick the one both detectors rank least-hallucinated | **30.8** | **8.8** | 71.0 | strongest; fluent (a real sample); beats PAI (31.2@69.6) at higher recall |
+| best-of-N, recall-preserving rerank | reward object coverage in the rerank | 45.2 | 12.8 | **76.8** | −7 CHAIR_s with recall *fully preserved* (elimination can't do this) |
 | visual-source neutralization | zero the visual tokens that support a detected hallucination, regenerate | 43.6 | 12.5 | 74.0 | fluent, recall-safe, single mechanism |
 | grounding excision (+ base-rate protect, + LM repair) | remove flagged object mentions, repair grammar | ~40 | ~12 | ~74 | fluent (GPT-judge 4.4/5 vs 2.5 for raw deletion) |
 
-Reductions of **−9 to −17 CHAIR_s** — competitive with or beating faithfully-reproduced baselines. Best-of-N's
-**oracle upper bound is 23.6 / 5.45 / recall 81**, indicating the sampled captions contain much better outputs and the
-bottleneck is the reranker's quality. Scripts: `method/{beston,vtablate,excise,textexcise,repair,gground}.py`.
+Reductions of up to **−21.6 CHAIR_s** (CHAIR_i nearly halved), recall-safe, and **fluent** (best-of-N selects a real
+sampled caption). Because it *selects* rather than *removes*, best-of-N can cut hallucinations without the recall cost
+of suppression — the recall-preserving variant even keeps recall at 76.8. Its **oracle upper bound is 22.0 / 5.58 /
+recall 80.5**, so the sampled captions contain much better outputs and the remaining gap is reranker quality. Scripts:
+`method/{beston,vtablate,excise,textexcise,repair,gground}.py`.
 
 ## 3. POPE (discrimination)
 POPE errors are mostly the model being *conservative* (false-negatives), and the model's own yes/no is already strong.
