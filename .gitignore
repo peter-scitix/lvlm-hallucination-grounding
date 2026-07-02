@@ -1,0 +1,24 @@
+# never commit secrets / credentials / tokens
+.secrets/
+*secret*
+*credential*
+*api*key*
+*.key
+.env
+# no model weights / data / images / logs
+*.safetensors
+*.bin
+*.pt
+*.parquet
+*.jpg
+*.jpeg
+*.png
+logs/
+runs/
+results/
+__pycache__/
+*.pyc
+# large run outputs (kept out; results are in the writeups)
+method/*_out.jsonl
+method/F_*.jsonl
+method/R_*.jsonl
