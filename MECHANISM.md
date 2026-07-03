@@ -19,7 +19,14 @@ and measure the change in CHAIR. LLaVA-1.5-7B, CHAIR test split, n=250, 72 flagg
 2. **Direction is not a lever.** Removing the component of the visual tokens along the object's
    unembedding (logit-lens readout) direction — while preserving their norm — has **no effect** (−0.4, same as
    the norm-preserving scale-0.6). You cannot surgically excise the "object-ness" direction from a patch.
-3. **Interpretation.** The hallucinated object is not localized to a removable semantic direction inside its
+3. **Targeting is partially specific (matched control).** Selecting the hallucination's *own* top-k support tokens
+   vs. the *same number* of random visual tokens, both at matched threshold (τ=−0.03, 82 flagged instances, scale→0):
+   targeted → **−8.0 CHAIR_s** (52.4→44.4), random → **−4.0** (52.4→48.4). So targeting the grounding-identified
+   support tokens is **~2× more effective** than perturbing random patches — but random is *not* null. Part of the
+   effect is generic (shrinking any visual-token norms mildly degrades over-generation), part is specific to the
+   grounding-selected tokens. Honest read: the grounding localization helps (2×), but the norm lever is not perfectly
+   surgical.
+4. **Interpretation.** The hallucinated object is not localized to a removable semantic direction inside its
    supporting visual tokens; it is bound to those tokens' overall **presence/magnitude (radial component)**. This
    is thematically consistent with work showing the *radial / norm* structure of CLIP-style embeddings is
    non-trivial and information-bearing (e.g. Levi & Gilboa, "The Double-Ellipsoid Geometry of CLIP," ICML 2025 /

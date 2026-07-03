@@ -114,10 +114,10 @@ vocabulary, and scorer, so it is an independent test of the generation control.
 - **Self-verification transfers across architectures — even stronger on Qwen (0.94).** The generation–verification
   gap is a property of autoregressive-vs-discriminative behavior, not of LLaVA specifically. This is the robust,
   portable detector.
-- **The logit-lens grounding detector is architecture-specific.** It relies on visual-token → LM-unembedding
-  alignment that holds in the LLaVA family but is weak at Qwen2.5-VL's final layer (its dynamic-resolution visual
-  stack is not directly "readable" by the LM head). Honest scope boundary — grounding is a LLaVA-family signal;
-  self-verification is the universal one. (A per-architecture layer sweep for Qwen grounding is a pending follow-up.)
+- **The logit-lens grounding detector transfers only weakly, and needs per-architecture tuning.** At Qwen2.5-VL's
+  final layer it is near-chance (0.59), but a layer sweep recovers signal at mid-late layers on the *raw* (pre-RMSNorm)
+  hidden states — up to **0.72 at layers 24/28** — still well below LLaVA's 0.82. So grounding is a real but
+  architecture-sensitive signal (best layer + norm differ per model); self-verification is the robust, tuning-free one.
 
 **Control also transfers via self-verification.** Because self-verification is strong on Qwen, best-of-N reranked by
 it reduces Qwen's *own* hallucination (CHAIR, n=250):
@@ -130,6 +130,20 @@ it reduces Qwen's *own* hallucination (CHAIR, n=250):
 Qwen already hallucinates far less than LLaVA-1.5 (21.2 vs 52.4 CHAIR_s), yet best-of-N still cuts **−4.0 CHAIR_s while
 *raising* recall** (55.0 → 62.5). The full detect → control loop is architecture-portable through the self-verification
 detector — even where the logit-lens grounding signal is not.
+
+**(d) Where it does *not* transfer — honest boundaries.** The control is only as good as the match between the
+detector and the benchmark's notion of hallucination:
+
+- **MMHal-Bench (open-ended QA, GPT-judged).** Best-of-N did **not** help: judged score 1.98 → 1.83, hallucination
+  rate 0.59 → 0.63 (LLaVA-1.5-7B, n=96, judge = claude-sonnet-4-6). Our detector asks "is object *o* present?", which
+  is irrelevant to MMHal's counting / attribute / relation / adversarial questions. The method is scoped to
+  **object-presence hallucination in caption/description generation**, not general VQA.
+- **Qwen2.5-VL on AMBER.** Best-of-N did not help there either (Hal 22.9 → 28.9): the COCO-object self-verify reranker
+  does not align with AMBER's broader object vocabulary *on this architecture*, and Qwen's greedy AMBER hallucination
+  is already low. Control transfer is therefore **benchmark- and architecture-dependent**, not universal.
+
+These negatives sharpen the claim: the method reliably reduces **object hallucination in generated captions**
+(CHAIR, AMBER) across LLaVA-7B/13B and, for CHAIR, Qwen — it is not a general-purpose VQA-hallucination fix.
 
 ## 6. Limitations
 POPE gains are small and need a 2-parameter calibration; best-of-N costs N× generation. The **logit-lens grounding
