@@ -22,12 +22,15 @@ ap.add_argument("--N",type=int,default=6); ap.add_argument("--temp",type=float,d
 ap.add_argument("--tau",type=float,default=-0.03,help="gc<tau 记为一个预测幻觉")
 ap.add_argument("--split",default="test"); ap.add_argument("--n",type=int,default=250); ap.add_argument("--max_new_tokens",type=int,default=512)
 ap.add_argument("--gpu",default="1"); ap.add_argument("--out",default="method/beston_out.jsonl")
+ap.add_argument("--model",default="llava-hf/llava-1.5-7b-hf")
+ap.add_argument("--cal",default="detect/calibration_tkb.json")
 a=ap.parse_args(); cu=CU()
 torch.set_grad_enabled(False)
-proc=AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf");tok=proc.tokenizer
-model=LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf",torch_dtype=torch.float16,device_map="cuda:0",attn_implementation="eager").eval()
+proc=AutoProcessor.from_pretrained(a.model);tok=proc.tokenizer
+model=LlavaForConditionalGeneration.from_pretrained(a.model,torch_dtype=torch.float16,device_map="cuda:0",attn_implementation="eager").eval()
 img_id=model.config.image_token_index;DEV="cuda:0";W=model.lm_head.weight;norm=model.model.language_model.norm
-cal=json.load(open("detect/calibration_tkb.json"));calmean=sum(cal.values())/len(cal)
+Llast=model.config.text_config.num_hidden_layers  # last-layer hidden_states index (7B=32, 13B=40)
+cal=json.load(open(a.cal));calmean=sum(cal.values())/len(cal)
 YES=tok.encode("Yes",add_special_tokens=False)[0]; NO=tok.encode("No",add_special_tokens=False)[0]
 yl_=tok.encode("yes",add_special_tokens=False)[0]; nl_=tok.encode("no",add_special_tokens=False)[0]
 _svc={}
@@ -49,7 +52,7 @@ def prep(image):
     vl=proc(images=image,text=P_IMG,return_tensors="pt").to(DEV,torch.float16)
     vis=(vl.input_ids[0]==img_id).nonzero(as_tuple=True)[0]
     o=model(**vl,output_hidden_states=True,use_cache=False)
-    hn=F.normalize(norm(o.hidden_states[31][0,vis,:]).float(),dim=-1)
+    hn=F.normalize(norm(o.hidden_states[Llast][0,vis,:]).float(),dim=-1)
     return vl,hn
 def gc_of(hn,o):
     e=emb(o)

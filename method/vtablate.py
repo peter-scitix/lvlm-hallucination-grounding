@@ -25,14 +25,18 @@ ap.add_argument("--ban",action="store_true",help="重生成时同时ban幻觉obj
 ap.add_argument("--protect",default="person,tennis racket,surfboard,sports ball,elephant,umbrella")
 ap.add_argument("--split",default="test"); ap.add_argument("--n",type=int,default=250); ap.add_argument("--max_new_tokens",type=int,default=512)
 ap.add_argument("--gpu",default="1"); ap.add_argument("--out",default="method/vt_out.jsonl"); ap.add_argument("--show",type=int,default=4)
+ap.add_argument("--model",default="llava-hf/llava-1.5-7b-hf")
+ap.add_argument("--cal",default="detect/calibration_tkb.json")
+ap.add_argument("--random",action="store_true",help="范数特异性对照: 同数量随机patch做同样扰动(非幻觉支撑token)")
 a=ap.parse_args(); cu=CU()
 PROTECT=set(x.strip() for x in a.protect.split(",") if x.strip())
 torch.set_grad_enabled(False)
-proc=AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf");tok=proc.tokenizer
-model=LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf",torch_dtype=torch.float16,device_map="cuda:0",attn_implementation="eager").eval()
+proc=AutoProcessor.from_pretrained(a.model);tok=proc.tokenizer
+model=LlavaForConditionalGeneration.from_pretrained(a.model,torch_dtype=torch.float16,device_map="cuda:0",attn_implementation="eager").eval()
 img_id=model.config.image_token_index;eos=tok.eos_token_id;DEV="cuda:0"
 W=model.lm_head.weight;norm=model.model.language_model.norm
-cal=json.load(open("detect/calibration_tkb.json"));cand=list(cal.keys());calmean=sum(cal.values())/len(cal)
+Llast=model.config.text_config.num_hidden_layers  # last-layer hidden_states index (7B=32, 13B=40)
+cal=json.load(open(a.cal));cand=list(cal.keys());calmean=sum(cal.values())/len(cal)
 objE={o:F.normalize(W[tok.encode(o,add_special_tokens=False)].float().mean(0),dim=-1).to(DEV) for o in cand}
 IRREG={"man":"men","woman":"women","person":"people","child":"children","foot":"feet","tooth":"teeth"}
 canon2ftoks=defaultdict(set)
@@ -65,7 +69,7 @@ def prep(image):
     vl=proc(images=image,text=P_IMG,return_tensors="pt").to(DEV,torch.float16)
     vis=(vl.input_ids[0]==img_id).nonzero(as_tuple=True)[0]
     o=model(**vl,output_hidden_states=True,use_cache=False)
-    hn=F.normalize(norm(o.hidden_states[31][0,vis,:]).float(),dim=-1)  # (576,d)
+    hn=F.normalize(norm(o.hidden_states[Llast][0,vis,:]).float(),dim=-1)  # (576,d)
     return vl,hn,len(vis)
 @torch.no_grad()
 def gen(vl,banned=None):
@@ -97,6 +101,9 @@ for c,i in enumerate(idxs):
             toks=support_tokens(hn,o,a.rk); sel|=set(toks)
             if a.mode=="project" and objE.get(o) is not None:
                 for t in toks: dirs[t]=objE[o]   # 该patch沿其支撑object的语义方向投影
+        if a.random and sel:   # 特异性对照: 换成同数量随机patch(非幻觉支撑), 同样扰动
+            import random as _r; _r.seed(1000+i)
+            sel=set(_r.sample(range(P), min(len(sel),P)))
         S["sel"]=sorted(sel); S["mode"]=a.mode; S["dirs"]=dirs; S["scale"]=a.scale
         banned=list({t for o in bad for t in canon2ftoks.get(o,set())}) if a.ban else None
         newcap=gen(vl,banned); S["sel"]=None; nab+=1

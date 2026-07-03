@@ -1,9 +1,9 @@
 # Training-free Object-Hallucination Detection & Control for LVLMs
 
 Training-free (no fine-tuning) detection and mitigation of object hallucination in large
-vision-language models, built on a **logit-lens grounding** signal. All results on **LLaVA-1.5-7B**
-(detection also validated on **LLaVA-1.5-13B**), CHAIR (500 COCO val2014, greedy, max_new_tokens=512)
-and POPE (standard yes/no protocol).
+vision-language models, built on a **logit-lens grounding** signal and a **self-verification** signal.
+Core results on **LLaVA-1.5-7B** (CHAIR + POPE), with generalization checks on **AMBER-generative**, a
+**second model size (LLaVA-1.5-13B)**, and a **second architecture (Qwen2.5-VL-7B)** — see §5.
 
 > This is a research code + notes release for review. Model weights, COCO images, cloned baseline
 > repos, and raw run outputs are **not** included. Scripts use absolute paths to the original
@@ -79,10 +79,48 @@ Scripts: `method/{pope_ground,pope_sc,pope_eval}.py`.
   a recall cost, and is a no-op on standard POPE. On standard POPE, no training-free decoder we tested reliably improves
   the baseline.
 
-## 5. Limitations
-Single model family (LLaVA-1.5-7B; detection cross-checked on 13B), CHAIR-centered; POPE gains are small and need a
-2-parameter calibration; best-of-N costs N× generation. Broader models (InstructBLIP/Qwen-VL) and benchmarks (AMBER)
-are future work.
+## 5. Generalization: second benchmark, second model size, second architecture
+The method was developed on LLaVA-1.5-7B / CHAIR. We verified how far it transfers (all runs n=250–400, same recipe).
+
+**(a) A second generation benchmark — AMBER-generative (LLaVA-1.5-7B).** AMBER has its own images, object
+vocabulary, and scorer, so it is an independent test of the generation control.
+
+| method | AMBER CHAIR ↓ | Cover ↑ | Hal ↓ |
+|---|---|---|---|
+| baseline (greedy) | 7.44 | 50.0 | 33.7 |
+| **best-of-N (grounding ⊕ self-verify rerank)** | **5.11** | 48.9 | **23.7** |
+
+`Hal` = fraction of captions containing *any* hallucination — cut by **10 points** (33.7 → 23.7), with coverage
+essentially preserved. The generation control is **not CHAIR-specific**.
+
+**(b) A second model size — LLaVA-1.5-13B (CHAIR).** Same best-of-N recipe:
+
+| method | CHAIR_s ↓ | CHAIR_i ↓ | recall |
+|---|---|---|---|
+| baseline | 51.6 | 14.0 | 76.3 |
+| **best-of-N** | **36.0** | **8.8** | 76.7 |
+
+**−15.6 CHAIR_s, recall preserved** — the same pattern as 7B (−21.6 there), driven by the self-verification reranker.
+
+**(c) A second architecture — Qwen2.5-VL-7B (detection).** Here the two detectors diverge, which is itself the finding:
+
+| detector (AUROC) | LLaVA-1.5-7B | LLaVA-1.5-13B | Qwen2.5-VL-7B |
+|---|---|---|---|
+| grounding logit-lens | 0.82 | 0.80 | **0.59** |
+| self-verification | 0.89 | 0.90 | **0.94** |
+
+- **Self-verification transfers across architectures — even stronger on Qwen (0.94).** The generation–verification
+  gap is a property of autoregressive-vs-discriminative behavior, not of LLaVA specifically. This is the robust,
+  portable detector.
+- **The logit-lens grounding detector is architecture-specific.** It relies on visual-token → LM-unembedding
+  alignment that holds in the LLaVA family but is weak at Qwen2.5-VL's final layer (its dynamic-resolution visual
+  stack is not directly "readable" by the LM head). Honest scope boundary — grounding is a LLaVA-family signal;
+  self-verification is the universal one. (A per-architecture layer sweep for Qwen grounding is a pending follow-up.)
+
+## 6. Limitations
+POPE gains are small and need a 2-parameter calibration; best-of-N costs N× generation. The **logit-lens grounding
+detector does not transfer to Qwen2.5-VL** at the final layer (§5c) — the portable detector is self-verification.
+Generation control is validated on CHAIR + AMBER and on 7B + 13B; MME/MMHal and Qwen best-of-N are in progress.
 
 ## Repo layout
 - `METHOD_SUMMARY.md` — concise method overview.
