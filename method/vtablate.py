@@ -19,7 +19,8 @@ def CU():
     s=importlib.util.spec_from_file_location("cu",p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 ap=argparse.ArgumentParser()
 ap.add_argument("--tau",type=float,default=-0.06); ap.add_argument("--rk",type=int,default=20,help="每个幻觉object中和的visual token数")
-ap.add_argument("--mode",default="zero",choices=["zero","mean"])
+ap.add_argument("--mode",default="zero",choices=["zero","mean","project","scale"])
+ap.add_argument("--scale",type=float,default=0.0,help="scale模式: 支撑token乘以该系数")
 ap.add_argument("--ban",action="store_true",help="重生成时同时ban幻觉object输出token(视觉中和保通顺+ban保证移除)")
 ap.add_argument("--protect",default="person,tennis racket,surfboard,sports ball,elephant,umbrella")
 ap.add_argument("--split",default="test"); ap.add_argument("--n",type=int,default=250); ap.add_argument("--max_new_tokens",type=int,default=512)
@@ -40,7 +41,7 @@ for w,canon in cu.INVERSE_SYNONYM_DICT.items():
         ids=tok.encode(s,add_special_tokens=False)
         if ids: canon2ftoks[canon].add(ids[0])
 # projector hook: 把 SEL 行清零/均值
-S={"sel":None,"mode":"zero"}
+S={"sel":None,"mode":"zero","dirs":{}}
 def proj_hook(mod,inp,out):
     if S["sel"] is None: return out
     o=out
@@ -48,6 +49,13 @@ def proj_hook(mod,inp,out):
     idx=[i for i in S["sel"] if i<flat.shape[0]]
     if idx:
         if S["mode"]=="mean": flat[idx]=flat.mean(0,keepdim=True)
+        elif S["mode"]=="scale":
+            for i in idx: flat[i]=flat[i]*S.get("scale",0.0)
+        elif S["mode"]=="project":   # 沿object语义方向投影掉(只去"指向o"的分量)
+            for i in idx:
+                d=S["dirs"].get(i)
+                if d is not None:
+                    dd=d.to(flat.dtype); flat[i]=flat[i]-(flat[i]@dd)*dd
         else: flat[idx]=0
     return o
 model.multi_modal_projector.register_forward_hook(proj_hook)
@@ -84,9 +92,12 @@ for c,i in enumerate(idxs):
     _,node,_,_=cu.caption_to_words(cap)
     bad=[o for o in set(node) if o not in PROTECT and o in objE and gc_of(hn,o)<a.tau]
     if bad:
-        sel=set()
-        for o in bad: sel|=set(support_tokens(hn,o,a.rk))
-        S["sel"]=sorted(sel); S["mode"]=a.mode
+        sel=set(); dirs={}
+        for o in bad:
+            toks=support_tokens(hn,o,a.rk); sel|=set(toks)
+            if a.mode=="project" and objE.get(o) is not None:
+                for t in toks: dirs[t]=objE[o]   # 该patch沿其支撑object的语义方向投影
+        S["sel"]=sorted(sel); S["mode"]=a.mode; S["dirs"]=dirs; S["scale"]=a.scale
         banned=list({t for o in bad for t in canon2ftoks.get(o,set())}) if a.ban else None
         newcap=gen(vl,banned); S["sel"]=None; nab+=1
     else:

@@ -55,6 +55,10 @@ be used as a hard POPE classifier (its ranking is good, AUROC up to 0.94, but it
 Scripts: `method/{pope_ground,pope_sc,pope_eval}.py`.
 
 ## 4. Key findings (honest)
+- **Hallucination is norm-driven, not direction-driven** (`MECHANISM.md`). Perturbing a hallucination's supporting
+  visual tokens: shrinking their **norm** suppresses it monotonically (→0% = −6.8 CHAIR_s, →30% = −3.2, →60% = −0.4),
+  but removing the object's **semantic direction** while preserving norm does *nothing* (≈0). The object is bound to
+  the patches' magnitude, not a removable direction — a mechanistic explanation for why visual-feature zeroing works.
 - **Elimination is detection-precision-bounded.** Surgical excision ≡ soft-suppression ≡ the detector's precision–recall
   frontier; changing the intervention mechanism does not move it (only a better detector does). See `THEORY.md`.
 - **Generation–verification gap:** the model self-verifies (0.89) better than feature detectors (0.82); cross-model.
@@ -72,6 +76,7 @@ are future work.
 - `METHOD_SUMMARY.md` — concise method overview.
 - `WRITEUP.md` — detailed method + results.
 - `THEORY.md` — the detection-bounded frontier (selective-prediction framing).
+- `MECHANISM.md` — causal probe: hallucination is norm-driven, not direction-driven.
 - `COMPETITOR_ANALYSIS.md` — faithful reproduction of PAI and the ICLR-Oral opponent.
 - `detect/` — grounding detector + AUROC analysis.
 - `method/` — CHAIR control + POPE fusion + baselines/ablations.
