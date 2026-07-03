@@ -106,10 +106,14 @@ vocabulary, and scorer, so it is an independent test of the generation control.
 
 **(c) A second architecture — Qwen2.5-VL-7B (detection → control).** Here the two detectors diverge, which is itself the finding:
 
-| detector (AUROC) | LLaVA-1.5-7B | LLaVA-1.5-13B | Qwen2.5-VL-7B |
-|---|---|---|---|
-| grounding logit-lens | 0.82 | 0.80 | **0.59** |
-| self-verification | 0.89 | 0.90 | **0.94** |
+| detector (AUROC) | LLaVA-1.5-7B | LLaVA-1.5-13B | Qwen2.5-VL-7B | InstructBLIP-Vicuna-7B |
+|---|---|---|---|---|
+| grounding logit-lens | 0.82 | 0.80 | 0.59 (0.72 best layer) | n/a (Q-Former) |
+| **self-verification** | **0.89** | **0.90** | **0.94** | **0.92** |
+
+Self-verification holds at **0.89–0.94 across four models spanning three distinct visual architectures** — LLaVA's
+linear projector, Qwen2.5-VL's dynamic-resolution merger, and InstructBLIP's Q-Former (whose 32 query tokens make the
+logit-lens grounding inapplicable, yet self-verification still reaches 0.92). It is the architecture-agnostic detector.
 
 - **Self-verification transfers across architectures — even stronger on Qwen (0.94).** The generation–verification
   gap is a property of autoregressive-vs-discriminative behavior, not of LLaVA specifically. This is the robust,
