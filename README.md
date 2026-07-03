@@ -9,6 +9,16 @@ and POPE (standard yes/no protocol).
 > repos, and raw run outputs are **not** included. Scripts use absolute paths to the original
 > workspace and are provided for reference/reproduction of the method, not turn-key execution.
 
+## Results at a glance (honest)
+| task | baseline | ours | read |
+|---|---|---|---|
+| **CHAIR** (generation) | 52.4 CHAIR_s | **30.8** (−21.6), CHAIR_i 15.7→8.8 | strong; beats faithfully-reproduced PAI at matched recall; the ICLR-Oral opponent's headline is unreproducible |
+| **POPE** (discrimination) | 0.84 / 0.87 / 0.87 acc | +0.2 / +0.4 / **+0.8%** | small — baseline is near-saturated; *no* training-free method reliably improves standard POPE, and competitors' claimed POPE gains do not reproduce |
+
+The split is intrinsic: our approach detects hallucinated objects and intervenes on *generation*, which is exactly
+what CHAIR measures; POPE is *discrimination*, where the model's own yes/no is already near-optimal. Detection itself
+is strong on both (grounding 0.82 / self-verification 0.89).
+
 ## 1. Detection (the foundation)
 For a mentioned object *o*: project each of the 576 visual-token hidden states (final layer, RMSNorm'd)
 onto *o*'s unembedding row, take the top-k-mean cosine, per-object calibrated →
@@ -40,8 +50,10 @@ recall 80.5**, so the sampled captions contain much better outputs and the remai
 `method/{beston,vtablate,excise,textexcise,repair,gground}.py`.
 
 ## 3. POPE (discrimination)
-POPE errors are mostly the model being *conservative* (false-negatives), and the model's own yes/no is already strong.
-Our grounding signal is largely redundant there, but a **learned soft fusion** of the model's yes/no margin with the
+The model's **POPE baseline is already near-saturated**: acc **0.840 / 0.868 / 0.870** (adv/pop/rand), F1
+0.829/0.855/0.857 — so there is little headroom, and POPE errors are mostly the model being *conservative*
+(false-negatives). Our grounding signal has real presence-discrimination power (AUROC up to 0.94 on random) but is
+largely **redundant** with the model's own yes/no. A **learned soft fusion** of the model's yes/no margin with the
 grounding score adds a small, cross-validated gain:
 
 | split | model only (CV AUROC) | + grounding (CV AUROC) | acc gain |
@@ -77,6 +89,7 @@ are future work.
 - `WRITEUP.md` — detailed method + results.
 - `THEORY.md` — the detection-bounded frontier (selective-prediction framing).
 - `MECHANISM.md` — causal probe: hallucination is norm-driven, not direction-driven.
+- `RESPONSE.md` — point-by-point answers to review questions (looseness, attention-vs-semantic, geometry experiment).
 - `COMPETITOR_ANALYSIS.md` — faithful reproduction of PAI and the ICLR-Oral opponent.
 - `detect/` — grounding detector + AUROC analysis.
 - `method/` — CHAIR control + POPE fusion + baselines/ablations.
