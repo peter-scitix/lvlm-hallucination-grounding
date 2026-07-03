@@ -82,16 +82,18 @@ Scripts: `method/{pope_ground,pope_sc,pope_eval}.py`.
 ## 5. Generalization: second benchmark, second model size, second architecture
 The method was developed on LLaVA-1.5-7B / CHAIR. We verified how far it transfers (all runs n=250–400, same recipe).
 
-**(a) A second generation benchmark — AMBER-generative (LLaVA-1.5-7B).** AMBER has its own images, object
+**(a) A second generation benchmark — AMBER-generative (LLaVA-1.5-7B and 13B).** AMBER has its own images, object
 vocabulary, and scorer, so it is an independent test of the generation control.
 
-| method | AMBER CHAIR ↓ | Cover ↑ | Hal ↓ |
-|---|---|---|---|
-| baseline (greedy) | 7.44 | 50.0 | 33.7 |
-| **best-of-N (grounding ⊕ self-verify rerank)** | **5.11** | 48.9 | **23.7** |
+| model | method | AMBER CHAIR ↓ | Cover ↑ | Hal ↓ |
+|---|---|---|---|---|
+| 7B | baseline (greedy) | 7.44 | 50.0 | 33.7 |
+| 7B | **best-of-N (grounding ⊕ self-verify rerank)** | **5.11** | 48.9 | **23.7** |
+| 13B | baseline (greedy) | 6.27 | 51.1 | 26.1 |
+| 13B | **best-of-N** | **4.72** | 50.9 | **19.7** |
 
-`Hal` = fraction of captions containing *any* hallucination — cut by **10 points** (33.7 → 23.7), with coverage
-essentially preserved. The generation control is **not CHAIR-specific**.
+`Hal` = fraction of captions containing *any* hallucination — cut by **10 points** on 7B (33.7 → 23.7) and **6.4** on
+13B (26.1 → 19.7), coverage essentially preserved in both. The generation control is **not CHAIR-specific**.
 
 **(b) A second model size — LLaVA-1.5-13B (CHAIR).** Same best-of-N recipe:
 
@@ -102,7 +104,7 @@ essentially preserved. The generation control is **not CHAIR-specific**.
 
 **−15.6 CHAIR_s, recall preserved** — the same pattern as 7B (−21.6 there), driven by the self-verification reranker.
 
-**(c) A second architecture — Qwen2.5-VL-7B (detection).** Here the two detectors diverge, which is itself the finding:
+**(c) A second architecture — Qwen2.5-VL-7B (detection → control).** Here the two detectors diverge, which is itself the finding:
 
 | detector (AUROC) | LLaVA-1.5-7B | LLaVA-1.5-13B | Qwen2.5-VL-7B |
 |---|---|---|---|
@@ -117,10 +119,24 @@ essentially preserved. The generation control is **not CHAIR-specific**.
   stack is not directly "readable" by the LM head). Honest scope boundary — grounding is a LLaVA-family signal;
   self-verification is the universal one. (A per-architecture layer sweep for Qwen grounding is a pending follow-up.)
 
+**Control also transfers via self-verification.** Because self-verification is strong on Qwen, best-of-N reranked by
+it reduces Qwen's *own* hallucination (CHAIR, n=250):
+
+| Qwen2.5-VL-7B | CHAIR_s ↓ | CHAIR_i ↓ | recall |
+|---|---|---|---|
+| baseline (greedy) | 21.2 | 12.3 | 55.0 |
+| **best-of-N (self-verify rerank)** | **17.2** | **9.3** | **62.5** |
+
+Qwen already hallucinates far less than LLaVA-1.5 (21.2 vs 52.4 CHAIR_s), yet best-of-N still cuts **−4.0 CHAIR_s while
+*raising* recall** (55.0 → 62.5). The full detect → control loop is architecture-portable through the self-verification
+detector — even where the logit-lens grounding signal is not.
+
 ## 6. Limitations
 POPE gains are small and need a 2-parameter calibration; best-of-N costs N× generation. The **logit-lens grounding
 detector does not transfer to Qwen2.5-VL** at the final layer (§5c) — the portable detector is self-verification.
-Generation control is validated on CHAIR + AMBER and on 7B + 13B; MME/MMHal and Qwen best-of-N are in progress.
+Generation control is now validated on **CHAIR + AMBER, on LLaVA-1.5-7B/13B, and cross-architecture on Qwen2.5-VL**
+(all via best-of-N + self-verification). MME baseline is established (Total 1755.78, LLaVA-1.5-7B) but MME is a
+yes/no discrimination benchmark where the generation control does not apply. MMHal-Bench is in progress.
 
 ## Repo layout
 - `METHOD_SUMMARY.md` — concise method overview.
