@@ -19,6 +19,103 @@ The split is intrinsic: our approach detects hallucinated objects and intervenes
 what CHAIR measures; POPE is *discrimination*, where the model's own yes/no is already near-optimal. Detection itself
 is strong on both (grounding 0.82 / self-verification 0.89).
 
+---
+
+# The complete method: sv-gate (self-verification–driven object-hallucination elimination)
+
+**One elimination pass:** generate a caption → for each mentioned object *o*, **① decide** if it is hallucinated →
+**② localize** the visual tokens that support *o* → **③ intervene** (remove) → regenerate once. This is the EAZY-family
+`detect → remove → regenerate` pipeline; we **decompose it into three axes and isolate each with controlled experiments**
+(LLaVA-1.5-7B, CHAIR, n=250, baseline **52.4 / 15.7 / recall 75.0**; each ablation changes ONE axis, self-verify flags 119 objects).
+
+### ① Decision — self-verification is the bottleneck
+Probe `"Is there a {o}?"`, margin `m(o)=logsumexp(No,no)−logsumexp(Yes,yes)`; flag if `m(o)>0`. **Holding the intervention
+fixed (zero the support tokens), the decision signal determines almost everything:**
+
+| decision signal | CHAIR_s | ΔCHAIR_s |
+|---|---|---|
+| grounding logit-lens (EAZY-style feature detector) | 52.0 | **−0.4** |
+| **self-verification (ours)** | **37.6** | **−14.8** |
+| oracle (ground-truth) | 34.8 | −17.6 |
+
+The model's own discriminative self-verification is a **30× better decision signal** than a feature detector (same
+intervention), and it is **universal across architectures**: AUROC **0.89 / 0.90 / 0.94 / 0.92** on LLaVA-7B / 13B /
+Qwen2.5-VL / InstructBLIP (a *generation–verification gap*: the model says the object when captioning but "no" when asked).
+
+### ② Localization — logit-lens grounding beats attention
+`support(p,o)=cos(RMSNorm(h_vis[p])@last-layer, unembed(o))`, take top-20 patches. **Holding decision + intervention fixed,
+vary only localization:**
+
+| localization | CHAIR_s | ΔCHAIR_s |
+|---|---|---|
+| **logit-lens grounding (ours)** | **37.6** | **−14.8** |
+| attention @L14 (EAZY's choice) | 42.0 | −10.4 |
+| random | 44.4 | −8.0 |
+
+Logit-lens grounding beats EAZY's attention localization by **+4.4**, and EAZY's attention (−10.4) is **barely above random**
+(−8.0) — the tokens that "claim to be *o*" via the vocabulary, not the high-attention tokens, are the causal ones.
+
+### ③ Intervention — norm-zeroing is near-optimal (EAZY is right here)
+Zero the localized tokens' projector-output embeddings, regenerate. **Vary only the intervention (same self-verify decision):**
+
+| intervention | CHAIR_s | recall |
+|---|---|---|
+| **zero (EAZY)** | 37.6 | 76.2 |
+| mean | 44.0 | 75.0 |
+| repair (→ image confident-token centroid) | 48.0 | 75.0 |
+| project (remove *o*'s direction, keep norm) | 52.0 | 75.0 |
+| zero + output-ban | 35.6 | 72.5 |
+| iterative (3 rounds) | 36.0 | 74.9 |
+
+Zeroing is near-optimal; every *removal* intervention is capped by the **oracle removal frontier (−17.6)**. **Mechanism
+(norm-vs-direction dissociation):** shrinking the support tokens' **norm** suppresses the hallucination (−14.8), while
+removing *o*'s **semantic direction** with the norm preserved does **nothing** (−0.4). The hallucination lives in the
+**magnitude**, not a removable direction.
+
+### Head-to-head vs EAZY (faithful reproduction of its full algorithm, same protocol)
+| method | CHAIR_s | recall |
+|---|---|---|
+| baseline | 52.4 | 75.0 |
+| EAZY (reproduced: counterfactual zero-all → keep-disappeared → attention-L14) | 39.6 | **65.9** |
+| **sv-gate (ours)** | **37.6** | **76.2** |
+
+**sv-gate Pareto-dominates EAZY** — lower CHAIR *and* +10 recall. EAZY's zero-all counterfactual + attention localization
+damage real objects (recall crash to 65.9); targeted self-verification preserves them.
+
+### Architecture-agnostic elimination (the differentiator)
+| model / visual architecture | our elimination | internal-signal methods (EAZY / logit-lens / VISTA) |
+|---|---|---|
+| LLaVA-1.5-7B (linear projector) | **−14.8** (sv-gate) | applicable |
+| Qwen2.5-VL (dynamic resolution) | −4.0 (self-verify best-of-N) | grounding degrades 0.82 → 0.59 |
+| **InstructBLIP (Q-Former)** | **−9.2** (self-verify + ban) | **undefined** (32 query tokens, no patch alignment) |
+
+Because self-verification reads only outputs, our elimination works on **Q-Former, where EAZY / logit-lens are literally
+undefined**.
+
+### Baselines (same protocol; recall–CHAIR trade-off in `figs/pareto.png`)
+| method | CHAIR_s | recall | |
+|---|---|---|---|
+| VCD | 54.4 | 76.9 | no help |
+| DoLa | 56.4 | 73.4 | no help |
+| PAI (α=0.5) | 35.2 | 67.6 | low CHAIR but recall crash |
+| best-of-N | 30.8 | 71.0 | lowest CHAIR, N× cost |
+| **sv-gate rk20** | 37.6 | **76.2** | on the Pareto frontier |
+
+### Honest positioning & limitations (for review)
+- The `detect → remove → regenerate` **pipeline is EAZY's** (ICCV'25). Our contributions: (a) **self-verification is the
+  bottleneck decision signal** and is **architecture-universal**; (b) **logit-lens localization > attention**; (c) the
+  **norm-vs-direction mechanism**; (d) **architecture-agnostic elimination** (works on Q-Former).
+- The two detection signals (**diffuse support + weak semantic alignment**) **overlap with 2604.04863 (CVPR'26)** —
+  detection is *not* our contribution.
+- **Not SOTA** on raw CHAIR (best-of-N and trained value-guided decoding go lower, at a recall cost). Training-free
+  *removal* is capped by the −17.6 frontier; only *selection* (best-of-N) or *trained* value-guided decoding
+  (ViMaR/MRGD) exceed it — both outside our training-free premise.
+- Scoped to **object-presence hallucination in caption generation** (does not extend to attribute/relation or open-QA).
+
+Scripts: `method/{svgate,eazy_repro,eazy_full,ib_svban,ban_test,iter_zero,repair_test,dtbr,selfverify}.py`.
+
+---
+
 ## 1. Detection (the foundation)
 For a mentioned object *o*: project each of the 576 visual-token hidden states (final layer, RMSNorm'd)
 onto *o*'s unembedding row, take the top-k-mean cosine, per-object calibrated →
